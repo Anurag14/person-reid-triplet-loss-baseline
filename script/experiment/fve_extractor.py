@@ -385,7 +385,12 @@ def main():
   ########
   # Test #
   ########
-
+  def write_my_csv(filename,MyData):
+    myfile=open(file_name,'w')
+    with myfile:
+      writer=csv.writer(myfile)
+      writer.writerows(MyData)
+      
   def test(load_model_weight=False):
     if load_model_weight:
       if cfg.model_weight_file != '':
@@ -399,10 +404,22 @@ def main():
     for test_set, name in zip(test_sets, test_set_names):
       test_set.set_feat_func(ExtractFeature(model_w, TVT))
       print('\n=========> Test on dataset: {} <=========\n'.format(name))
-      test_set.eval(
+      test_feat, test_ids, test_cams, test_im_names,test_marks=test_set.extract_feat(
         normalize_feat=cfg.normalize_feature,
         verbose=True)
-
+      write_my_csv('test_features.csv',test_feat)
+      write_my_csv('test_ids.csv',test_ids)
+      write_my_csv('test_cams.csv',test_cams)
+      write_my_cev('test_image_names.csv',test_in_names)
+    for train_set, name in zip(train_sets, train_set_names):
+      train_set.set_feat_func(ExtractFeature(model_w, TVT))
+      print('\n=========> Test on dataset: {} <=========\n'.format(name))
+      train_feat, train_im_names, train_labels=train_set.extract_feat(
+        normalize_feat=cfg.normalize_feature,
+        verbose=True)
+      write_my_csv('train_features.csv',train_feat)
+      write_my_csv('train_labels.csv',train_labels)
+      write_my_csv('train_image_names.csv',train_im_names)
   def validate():
     if val_set.extract_feat_func is None:
       val_set.set_feat_func(ExtractFeature(model_w, TVT))
