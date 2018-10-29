@@ -386,7 +386,7 @@ def main():
   # Test #
   ########
   def write_my_csv(filename,MyData):
-    myfile=open(file_name,'w')
+    myfile=open(filename,'w')
     with myfile:
       writer=csv.writer(myfile)
       writer.writerows(MyData)
