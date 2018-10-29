@@ -95,20 +95,19 @@ class TrainSet(Dataset):
       im_names: numpy array with shape [N]
       marks: numpy array with shape [N]
     """
-    feat, ids, cams, im_names, marks = [], [], [], [], []
+    feat, ids, cams, im_names, mirrored = [], [], [], [], []
     done = False
     step = 0
     printed = False
     st = time.time()
     last_time = time.time()
     while not done:
-      ims_, ids_, cams_, im_names_, marks_, done = self.next_batch()
+      ims_, im_names_, labels_, mirrored_, done = self.next_batch()
       feat_ = self.extract_feat_func(ims_)
       feat.append(feat_)
-      ids.append(ids_)
-      cams.append(cams_)
       im_names.append(im_names_)
-      marks.append(marks_)
+      labels.append(labels_)
+      #mirrored.append(mirrored_)
 
       if verbose:
         # Print the progress of extracting feature
@@ -127,10 +126,10 @@ class TrainSet(Dataset):
           last_time = time.time()
 
     feat = np.vstack(feat)
-    ids = np.hstack(ids)
-    cams = np.hstack(cams)
+    labels = np.hstack(labels)
+    #cams = np.hstack(cams)
     im_names = np.hstack(im_names)
-    marks = np.hstack(marks)
+    #marks = np.hstack(marks)
     if normalize_feat:
       feat = normalize(feat, axis=1)
-    return feat, ids, cams, im_names, marks
+    return feat, im_names, labels
