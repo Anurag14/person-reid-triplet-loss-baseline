@@ -82,3 +82,55 @@ class TrainSet(Dataset):
     labels = np.concatenate(labels)
     mirrored = np.concatenate(mirrored)
     return ims, im_names, labels, mirrored, self.epoch_done
+  
+  def extract_feat(self, normalize_feat, verbose=True):
+    """Extract the features of the whole image set.
+    Args:
+      normalize_feat: True or False, whether to normalize feature to unit length
+      verbose: whether to print the progress of extracting feature
+    Returns:
+      feat: numpy array with shape [N, C]
+      ids: numpy array with shape [N]
+      cams: numpy array with shape [N]
+      im_names: numpy array with shape [N]
+      marks: numpy array with shape [N]
+    """
+    feat, ids, cams, im_names, marks = [], [], [], [], []
+    done = False
+    step = 0
+    printed = False
+    st = time.time()
+    last_time = time.time()
+    while not done:
+      ims_, ids_, cams_, im_names_, marks_, done = self.next_batch()
+      feat_ = self.extract_feat_func(ims_)
+      feat.append(feat_)
+      ids.append(ids_)
+      cams.append(cams_)
+      im_names.append(im_names_)
+      marks.append(marks_)
+
+      if verbose:
+        # Print the progress of extracting feature
+        total_batches = (self.prefetcher.dataset_size
+                         // self.prefetcher.batch_size + 1)
+        step += 1
+        if step % 20 == 0:
+          if not printed:
+            printed = True
+          else:
+            # Clean the current line
+            sys.stdout.write("\033[F\033[K")
+          print('{}/{} batches done, +{:.2f}s, total {:.2f}s'
+                .format(step, total_batches,
+                        time.time() - last_time, time.time() - st))
+          last_time = time.time()
+
+    feat = np.vstack(feat)
+    ids = np.hstack(ids)
+    cams = np.hstack(cams)
+    im_names = np.hstack(im_names)
+    marks = np.hstack(marks)
+    if normalize_feat:
+      feat = normalize(feat, axis=1)
+    return feat, ids, cams, im_names, marks
