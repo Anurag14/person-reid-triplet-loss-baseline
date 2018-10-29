@@ -56,7 +56,10 @@ class TrainSet(Dataset):
     ims, mirrored = zip(*[self.pre_process_im(im) for im in ims])
     labels = [self.ids2labels[self.ids[ptr]] for _ in range(self.ims_per_id)]
     return ims, im_names, labels, mirrored
-
+  
+  def set_feat_func(self, extract_feat_func):
+    self.extract_feat_func = extract_feat_func
+    
   def next_batch(self):
     """Next batch of images and labels.
     Returns:
