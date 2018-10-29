@@ -14,11 +14,11 @@ import os.path as osp
 from tensorboardX import SummaryWriter
 import numpy as np
 import argparse
-import csv
 
 from tri_loss.dataset import create_dataset
 from tri_loss.model.Model import Model
 from tri_loss.model.TripletLoss import TripletLoss
+from tri_loss.model.xqdaLoss import xqdaLoss
 from tri_loss.model.loss import global_loss
 
 from tri_loss.utils.utils import time_str
@@ -54,7 +54,7 @@ class Config(object):
     parser.add_argument('--crop_prob', type=float, default=0)
     parser.add_argument('--crop_ratio', type=float, default=1)
     parser.add_argument('--mirror', type=str2bool, default=True)
-    parser.add_argument('--ids_per_batch', type=int, default=32)
+    parser.add_argument('--ids_per_batch', type=int, default=16)
     parser.add_argument('--ims_per_id', type=int, default=4)
 
     parser.add_argument('--log_to_file', type=str2bool, default=True)
@@ -80,7 +80,10 @@ class Config(object):
     parser.add_argument('--staircase_decay_multiply_factor',
                         type=float, default=0.1)
     parser.add_argument('--total_epochs', type=int, default=300)
-
+    parser.add_argument('--hyper_parameter',type=float,default=1)
+    parser.add_argument('--beta',type=float,default=1)
+    parser.add_argument('--usemean',type=int, default=0)
+    parser.add_argument('--use_exp',type=str2bool,default=False) 
     args = parser.parse_args()
 
     # gpu ids
@@ -197,7 +200,12 @@ class Config(object):
 
     # Margin of triplet loss
     self.margin = args.margin
-
+    
+    #xqda hyper parameter
+    self.hp = args.hyper_parameter
+    self.beta = args.beta
+    self.usemean = args.usemean
+    self.use_exp = args.use_exp
     #############
     # Training  #
     #############
@@ -319,7 +327,7 @@ def main():
   ###########
   # Dataset #
   ###########
-  
+
   if not cfg.only_test:
     train_set = create_dataset(**cfg.train_set_kwargs)
     # The combined dataset does not provide val set currently.
@@ -327,20 +335,14 @@ def main():
 
   test_sets = []
   test_set_names = []
-  train_sets = []
-  train_set_names = []
   if cfg.dataset == 'combined':
     for name in ['market1501', 'cuhk03', 'duke']:
       cfg.test_set_kwargs['name'] = name
       test_sets.append(create_dataset(**cfg.test_set_kwargs))
       test_set_names.append(name)
-      train_sets.append(create_dataset(**cfg.train_set_kwargs))
-      train_set_names.append(name)
   else:
     test_sets.append(create_dataset(**cfg.test_set_kwargs))
     test_set_names.append(cfg.dataset)
-    train_sets.append(create_dataset(**cfg.train_set_kwargs))
-    train_set_names.append(name)
 
   ###########
   # Models  #
@@ -355,7 +357,7 @@ def main():
   #############################
 
   tri_loss = TripletLoss(margin=cfg.margin)
-
+  xqda_loss= xqdaLoss()
   optimizer = optim.Adam(model.parameters(),
                          lr=cfg.base_lr,
                          weight_decay=cfg.weight_decay)
@@ -377,11 +379,6 @@ def main():
   ########
   # Test #
   ########
-  def write_my_csv(file_name,mydata):
-    myfile=open(file_name,'w')
-    with myfile:
-      writer=csv.writer(myfile)
-      writer.writerows(mydata)
 
   def test(load_model_weight=False):
     if load_model_weight:
@@ -395,23 +392,10 @@ def main():
 
     for test_set, name in zip(test_sets, test_set_names):
       test_set.set_feat_func(ExtractFeature(model_w, TVT))
-      print('\n=========> Test set features saved: {} <=========\n')
-      test_feat, test_ids, test_cams, test_im_names, test_marks=test_set.extract_feat(
+      print('\n=========> Test on dataset: {} <=========\n'.format(name))
+      test_set.eval(
         normalize_feat=cfg.normalize_feature,
         verbose=True)
-      write_my_csv('test_features.csv',test_feat)
-      write_my_csv('test_ids.csv',test_ids)
-      write_my_csv('test_cams.csv',test_cams)
-      write_my_cev('test_image_names.csv',test_in_names)
-    for train_set, name in zip(train_sets, train_set_names):
-      train_set.set_feat_func(ExtractFeature(model_w, TVT))
-      print('\n=========> Train set features saved: {} <=========\n')
-      train_feat, train_im_names, train_labels=test_set.extract_feat(
-        normalize_feat=cfg.normalize_feature,
-        verbose=True)
-      write_my_csv('train_features.csv',train_feat)
-      write_my_csv('train_labels.csv',train_labels)
-      write_my_csv('train_image_names.csv',train_im_names)
 
   def validate():
     if val_set.extract_feat_func is None:
@@ -459,7 +443,10 @@ def main():
     dist_ap_meter = AverageMeter()
     dist_an_meter = AverageMeter()
     loss_meter = AverageMeter()
-
+    xqda_meter = AverageMeter()
+    diff_meter = AverageMeter()
+    covp_meter = AverageMeter()
+    covn_meter = AverageMeter()
     ep_st = time.time()
     step = 0
     epoch_done = False
@@ -478,7 +465,8 @@ def main():
       loss, p_inds, n_inds, dist_ap, dist_an, dist_mat = global_loss(
         tri_loss, feat, labels_t,
         normalize_feature=cfg.normalize_feature)
-
+      xqdaloss,diffcov,cov_p,cov_n = xqda_loss(feat,labels_t,cfg.hp,cfg.usemean,cfg.use_exp)
+      loss = loss + cfg.beta*xqdaloss
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
@@ -501,17 +489,21 @@ def main():
       dist_ap_meter.update(d_ap)
       dist_an_meter.update(d_an)
       loss_meter.update(to_scalar(loss))
-
+      xqda_meter.update(to_scalar(xqdaloss))
+      diff_meter.update(to_scalar(diffcov))
+      covp_meter.update(to_scalar(cov_p))
+      covn_meter.update(to_scalar(cov_n))
       if step % cfg.steps_per_log == 0:
         time_log = '\tStep {}/Ep {}, {:.2f}s'.format(
           step, ep + 1, time.time() - step_st, )
 
         tri_log = (', prec {:.2%}, sm {:.2%}, '
                    'd_ap {:.4f}, d_an {:.4f}, '
-                   'loss {:.4f}'.format(
+                   'loss {:.4f}, xqdaloss {:.4f}, '
+                   'diff {:.4f}, cov_p {:.4f}, cov_n{:.4f}'.format(
           prec_meter.val, sm_meter.val,
           dist_ap_meter.val, dist_an_meter.val,
-          loss_meter.val, ))
+          loss_meter.val, xqda_meter.val,diff_meter.val,covp_meter.val,covn_meter.val))
 
         log = time_log + tri_log
         print(log)
@@ -524,10 +516,10 @@ def main():
 
     tri_log = (', prec {:.2%}, sm {:.2%}, '
                'd_ap {:.4f}, d_an {:.4f}, '
-               'loss {:.4f}'.format(
+               'loss {:.4f}, xqdaloss {:.4f}'.format(
       prec_meter.avg, sm_meter.avg,
       dist_ap_meter.avg, dist_an_meter.avg,
-      loss_meter.avg, ))
+      loss_meter.avg, xqda_meter.avg))
 
     log = time_log + tri_log
     print(log)
