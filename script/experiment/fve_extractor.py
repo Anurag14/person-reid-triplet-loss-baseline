@@ -14,7 +14,7 @@ import os.path as osp
 from tensorboardX import SummaryWriter
 import numpy as np
 import argparse
-
+import csv
 from tri_loss.dataset import create_dataset
 from tri_loss.model.Model import Model
 from tri_loss.model.TripletLoss import TripletLoss
@@ -335,14 +335,20 @@ def main():
 
   test_sets = []
   test_set_names = []
+  train_sets = []
+  train_set_names = []
   if cfg.dataset == 'combined':
     for name in ['market1501', 'cuhk03', 'duke']:
       cfg.test_set_kwargs['name'] = name
       test_sets.append(create_dataset(**cfg.test_set_kwargs))
       test_set_names.append(name)
+      train_sets.append(create_dataset(**cfg.test_set_kwargs))
+      train_set_names.append(name)
   else:
     test_sets.append(create_dataset(**cfg.test_set_kwargs))
     test_set_names.append(cfg.dataset)
+    train_sets.append(create_dataset(**cfg.test_set_kwargs))
+    train_set_names.append(name)
 
   ###########
   # Models  #
