@@ -348,7 +348,7 @@ def main():
     test_sets.append(create_dataset(**cfg.test_set_kwargs))
     test_set_names.append(cfg.dataset)
     train_sets.append(create_dataset(**cfg.train_set_kwargs))
-    train_set_names.append(name)
+    train_set_names.append(cfg.dataset)
 
   ###########
   # Models  #
